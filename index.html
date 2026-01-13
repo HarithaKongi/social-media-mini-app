@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chirp - A Mini Social App (Firebase)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  </head>
+
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+  <div id="app" class="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col min-h-[600px]">
+    <header id="main-header" class="bg-indigo-600 text-white p-6 flex items-center justify-between">
+      <h1 class="text-3xl font-bold tracking-tight">Chirp</h1>
+      <div id="user-info-section" class="flex items-center space-x-2">
+        <span id="user-display" class="font-medium text-lg text-indigo-100"></span>
+        <button id="logout-button" class="bg-white text-indigo-600 px-4 py-2 rounded-full font-semibold text-sm">Logout</button>
+      </div>
+    </header>
+
+    <!-- Login & Register -->
+    <div id="auth-sections" class="flex-grow flex flex-col items-center justify-center p-6 space-y-6">
+      <section id="login-section">
+        <h2 class="text-3xl font-bold text-gray-800 mb-4 text-center">Welcome Back!</h2>
+        <form id="login-form" class="w-full max-w-xs space-y-4">
+          <input type="text" id="login-username-input" placeholder="Username or Email" class="w-full p-4 border rounded-xl">
+          <button type="submit" class="w-full bg-indigo-500 text-white font-bold py-3 px-8 rounded-full">Login</button>
+        </form>
+        <p class="text-sm text-gray-500 text-center mt-4">Don't have an account? <a href="#" id="show-register" class="text-indigo-600 hover:underline">Register here</a></p>
+      </section>
+
+      <section id="register-section" class="hidden">
+        <h2 class="text-3xl font-bold text-gray-800 mb-4 text-center">Join Chirp!</h2>
+        <form id="register-form" class="w-full max-w-xs space-y-4">
+          <input type="text" id="register-username-input" placeholder="Choose a Username" class="w-full p-4 border rounded-xl">
+          <input type="email" id="register-email-input" placeholder="Your Email" class="w-full p-4 border rounded-xl">
+          <button type="submit" class="w-full bg-indigo-500 text-white font-bold py-3 px-8 rounded-full">Register</button>
+        </form>
+        <p class="text-sm text-gray-500 text-center mt-4">Already have an account? <a href="#" id="show-login" class="text-indigo-600 hover:underline">Login here</a></p>
+      </section>
+    </div>
+
+    <!-- Main App -->
+    <div id="main-app-content" class="flex-grow hidden">
+      <section class="p-6 border-b">
+        <form id="post-form" class="flex flex-col space-y-4">
+          <textarea id="post-content" placeholder="What's on your mind?" class="w-full p-4 border rounded-xl h-24" maxlength="280"></textarea>
+          <div class="flex items-center justify-between">
+            <span id="char-count" class="text-sm text-gray-500">0 / 280</span>
+            <button type="submit" class="bg-indigo-500 text-white font-bold py-3 px-8 rounded-full">Chirp</button>
+          </div>
+        </form>
+      </section>
+      <section id="posts-container" class="p-6 space-y-6">
+        <div id="placeholder-message" class="text-gray-500 text-center py-10">No posts yet. Be the first to chirp!</div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // Replace with your Firebase config
+    const firebaseConfig = {
+  apiKey: "AIzaSyCdX39l7_ynYSqi8jjTyhzhqQA5ZzbxQuI",
+  authDomain: "chirp-app-13531.firebaseapp.com",
+  databaseURL: "https://chirp-app-13531-default-rtdb.firebaseio.com",
+  projectId: "chirp-app-13531",
+  storageBucket: "chirp-app-13531.firebasestorage.app",
+  messagingSenderId: "789729009397",
+  appId: "1:789729009397:web:1cb8f4f3214c65e6172fbc"
+};
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const loginSection = document.getElementById('login-section');
+    const registerSection = document.getElementById('register-section');
+    const mainAppContent = document.getElementById('main-app-content');
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+    const loginUsernameInput = document.getElementById('login-username-input');
+    const registerUsernameInput = document.getElementById('register-username-input');
+    const registerEmailInput = document.getElementById('register-email-input');
+    const postForm = document.getElementById('post-form');
+    const postContent = document.getElementById('post-content');
+    const postsContainer = document.getElementById('posts-container');
+    const charCount = document.getElementById('char-count');
+    const userDisplay = document.getElementById('user-display');
+    const logoutButton = document.getElementById('logout-button');
+
+    let currentUser = null;
+
+    // 🔹 Load posts in realtime
+    db.ref("posts").on("value", snapshot => {
+      const posts = snapshot.val() || {};
+      renderPosts(Object.values(posts));
+    });
+
+    // 🔹 Register user
+    registerForm.addEventListener("submit", e => {
+      e.preventDefault();
+      const username = registerUsernameInput.value.trim().toLowerCase();
+      const email = registerEmailInput.value.trim().toLowerCase();
+      if (!username || !email) return alert("Fields cannot be empty");
+      db.ref("users/" + username).set({ name: username, email: email, handle: "@"+username });
+      alert("Account created! Please login.");
+      toggleAuthForms('login');
+    });
+
+    // 🔹 Login user
+    loginForm.addEventListener("submit", e => {
+      e.preventDefault();
+      const usernameOrEmail = loginUsernameInput.value.trim().toLowerCase();
+      db.ref("users").once("value").then(snapshot => {
+        const users = snapshot.val() || {};
+        const user = Object.values(users).find(u => u.name === usernameOrEmail || u.email === usernameOrEmail);
+        if (user) {
+          currentUser = user;
+          userDisplay.textContent = `User: ${user.name}`;
+          document.getElementById('auth-sections').classList.add('hidden');
+          mainAppContent.classList.remove('hidden');
+        } else {
+          alert("User not found");
+        }
+      });
+    });
+
+    // 🔹 Post chirp
+    postForm.addEventListener("submit", e => {
+      e.preventDefault();
+      if (!currentUser) return alert("Login first!");
+      const content = postContent.value.trim();
+      if (!content) return alert("Post cannot be empty");
+      const newPostRef = db.ref("posts").push();
+      newPostRef.set({
+        id: newPostRef.key,
+        author: currentUser.name,
+        handle: currentUser.handle,
+        content: content,
+        date: new Date().toISOString(),
+        likes: [],
+        comments: []
+      });
+      postContent.value = "";
+      updateCharCount();
+    });
+
+    // 🔹 Like a post
+    function toggleLike(postId) {
+      if (!currentUser) return alert("Login first!");
+      const postRef = db.ref("posts/" + postId + "/likes");
+      postRef.once("value").then(snapshot => {
+        let likes = snapshot.val() || [];
+        if (likes.includes(currentUser.name)) {
+          likes = likes.filter(u => u !== currentUser.name);
+        } else {
+          likes.push(currentUser.name);
+        }
+        postRef.set(likes);
+      });
+    }
+
+    // 🔹 Comment on a post
+    function addComment(postId, text) {
+      if (!currentUser) return alert("Login first!");
+      if (!text.trim()) return;
+      const commentRef = db.ref("posts/" + postId + "/comments").push();
+      commentRef.set({
+        author: currentUser.name,
+        handle: currentUser.handle,
+        content: text,
+        date: new Date().toISOString()
+      });
+    }
+
+    // 🔹 Render posts with likes & comments
+    function renderPosts(posts) {
+      postsContainer.innerHTML = "";
+      if (posts.length === 0) {
+        postsContainer.innerHTML = `<div class='text-gray-500 text-center py-10'>No posts yet. Be the first to chirp!</div>`;
+        return;
+      }
+      posts.sort((a, b) => new Date(b.date) - new Date(a.date));
+      posts.forEach(post => {
+        const el = document.createElement("div");
+        el.className = "bg-gray-50 rounded-2xl p-6 shadow-md mb-4";
+
+        const likeCount = post.likes ? post.likes.length : 0;
+        const comments = post.comments ? Object.values(post.comments) : [];
+
+        el.innerHTML = `
+          <div class='mb-2'><b>${post.author}</b> <span class='text-sm text-gray-500'>${post.handle}</span></div>
+          <p class='mb-2'>${post.content}</p>
+          <div class='flex items-center space-x-4 text-sm text-gray-600'>
+            <button class='like-btn text-red-500' data-id='${post.id}'>❤️ ${likeCount}</button>
+            <button class='comment-toggle text-blue-500' data-id='${post.id}'>💬 Comment</button>
+          </div>
+          <span class='text-xs text-gray-400'>${new Date(post.date).toLocaleString()}</span>
+          <div class='comments hidden mt-3' id='comments-${post.id}'>
+            <div class='space-y-2'>
+              ${comments.map(c => `<div class='p-2 bg-gray-100 rounded'><b>${c.author}</b>: ${c.content}</div>`).join("")}
+            </div>
+            <form class='comment-form mt-2 flex' data-id='${post.id}'>
+              <input type='text' class='flex-grow border rounded p-2' placeholder='Write a comment...'>
+              <button type='submit' class='ml-2 bg-indigo-500 text-white px-3 rounded'>Send</button>
+            </form>
+          </div>
+        `;
+
+        postsContainer.appendChild(el);
+      });
+
+      document.querySelectorAll('.like-btn').forEach(btn => {
+        btn.addEventListener('click', () => toggleLike(btn.dataset.id));
+      });
+
+      document.querySelectorAll('.comment-toggle').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.getElementById(`comments-${btn.dataset.id}`).classList.toggle('hidden');
+        });
+      });
+
+      document.querySelectorAll('.comment-form').forEach(form => {
+        form.addEventListener('submit', e => {
+          e.preventDefault();
+          const postId = form.dataset.id;
+          const input = form.querySelector('input');
+          addComment(postId, input.value);
+          input.value = '';
+        });
+      });
+    }
+
+    // 🔹 Char count
+    postContent.addEventListener('input', updateCharCount);
+    function updateCharCount() {
+      const count = postContent.value.length;
+      charCount.textContent = `${count} / 280`;
+    }
+
+    // 🔹 Toggle forms
+    document.getElementById('show-login').addEventListener('click', e => { e.preventDefault(); toggleAuthForms('login'); });
+    document.getElementById('show-register').addEventListener('click', e => { e.preventDefault(); toggleAuthForms('register'); });
+    function toggleAuthForms(form) {
+      if (form === 'login') { loginSection.classList.remove('hidden'); registerSection.classList.add('hidden'); }
+      else { loginSection.classList.add('hidden'); registerSection.classList.remove('hidden'); }
+    }
+
+    // 🔹 Logout
+    logoutButton.addEventListener('click', () => {
+      currentUser = null;
+      mainAppContent.classList.add('hidden');
+      document.getElementById('auth-sections').classList.remove('hidden');
+    });
+  </script>
+</body>
+</html>
